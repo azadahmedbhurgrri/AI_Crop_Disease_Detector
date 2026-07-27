@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 from PIL import Image, ImageOps
 import tensorflow as tf
+from tensorflow import keras
 
 # basic page setup
 st.set_page_config(page_title="AgriAI Crop Detector", layout="centered")
@@ -13,7 +14,7 @@ st.write("---")
 # function to load the teachable machine model
 @st.cache_resource
 def load_model():
-    model = tf.keras.models.load_model('Cotton_Crop_Disease_Model.h5', compile=False)
+    model = keras.models.load_model('Cotton_Crop_Disease_Model.h5', compile=False)
     with open('labels.txt', 'r') as f:
         labels = f.readlines()
     return model, labels
