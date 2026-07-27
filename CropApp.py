@@ -1,71 +1,91 @@
 import streamlit as st
 import numpy as np
-from PIL import Image
-import time
+from PIL import Image, ImageOps
+import tensorflow as tf
 
-# Page setting
-st.set_page_config(page_title="AgriAI Crop Detector", page_icon="🌱", layout="centered")
+# basic page setup
+st.set_page_config(page_title="AgriAI Crop Detector", layout="centered")
 
-st.title("🌱 AgriAI: Crop Disease Detection System")
-st.write("### SAVE YOUR CROP ")
+st.title("AgriAI: Crop Disease Detection")
+st.write("### Save Your Crop From Diseases")
 st.write("---")
 
-# 1. AI Engine Load Status Simulation
-with st.spinner("AI Engine (MobileNetV2 Neural Network) Load Ho Raha Hai..."):
-    time.sleep(1.5)  # Fast loading screen for evaluation
-st.success("AI Core Engine Online & Ready.")
+# function to load the teachable machine model
+@st.cache_resource
+def load_model():
+    model = tf.keras.models.load_model('Cotton_Crop_Disease_Model.h5', compile=False)
+    with open('labels.txt', 'r') as f:
+        labels = f.readlines()
+    return model, labels
 
-# 2. Agriculture Classes for Demo
-CLASSES = {
-    0: ("Cotton: Bacterial Blight (Bimari)", "❌ **Ilaaj:** Copper Oxychloride 3g/L ka spray karein aur infected patte jala dein."),
-    1: ("Okra (Bhindi): Yellow Vein Mosaic Virus", "❌ **Ilaaj:** Neem Oil ka spray karein. Yeh virus whitefly se phailta hai."),
-    2: ("Cotton: Healthy (Sehatmand)", "✅ Fasal bilkul theek hai. Standard paani aur khaan ka schedule rakhein."),
-    3: ("Okra: Healthy (Sehatmand)", "✅ Fasal bilkul theek hai. Kisi spray ki zaroorat nahi.")
+# loading model with a simple message
+with st.spinner("Loading Model... Please wait"):
+    try:
+        model, labels = load_model()
+        st.success("Model loaded successfully!")
+    except Exception as e:
+        st.error("Error loading model! Make sure the .h5 file is in the correct folder.")
+
+# dictionary for remedies
+remedies_dict = {
+    "Cotton Bacterial Blight": "Ilaaj: Copper Oxychloride 3g/L ka spray karein aur infected patte jala dein.",
+    "Cotton Healthy": "Status: Fasal bilkul theek hai. Standard schedule follow karein."
 }
 
-st.write("### 📸 Select Any One")
-# 3. UI Input Component (Camera + Upload Options)
-input_mode = st.radio("SELECT:", ("📸 Live Camera", "📁 Picture Upload"))
+st.write("### Select Input Method")
+input_type = st.radio("Choose one:", ("Camera", "Upload File"))
 
-uploaded_file = None
+img_file = None
 
-if input_mode == "📸 Live Camera":
-    # Yeh automatic aapke laptop ya mobile ka webcam khol dega
-    uploaded_file = st.camera_input("CAPTURE YOUR CROP PICTURE")
+if input_type == "Camera":
+    img_file = st.camera_input("Take a picture of the crop")
 else:
-    uploaded_file = st.file_uploader("SENT YOUR CROP PICTURE (JPG/PNG)...", type=["jpg", "jpeg", "png"])
+    img_file = st.file_uploader("Upload image here (jpg/png)", type=["jpg", "jpeg", "png"])
 
-# 4. Processing and Results
-if uploaded_file is not None:
-    image = Image.open(uploaded_file)
+# main logic for prediction
+if img_file is not None and 'model' in locals():
+    img = Image.open(img_file)
     
-    # Sirf upload mode me image alag se dikhayenge (camera input khud apni picture dikhata hai)
-    if input_mode == "📁 File Upload":
-        st.image(image, caption="Uploaded Crop Image", use_container_width=True)
+    # show uploaded image
+    if input_type == "Upload File":
+        st.image(img, caption="Your Uploaded Image", use_container_width=True)
+        
+    st.write("### Prediction Result:")
     
-    st.write("### 🔄 AI Analysis Result:")
-    
-    with st.spinner("Scanning Leaf Color Patterns & Matrix Features..."):
-        time.sleep(2)  # High-end AI simulation delay
+    with st.spinner("Analyzing..."):
+        # resize image to 224x224 as required by the model
+        img_resized = ImageOps.fit(img, (224, 224), Image.Resampling.LANCZOS)
+        img_array = np.asarray(img_resized)
         
-        # Convert image to array to calculate a stable mathematical variation
-        img_array = np.array(image.resize((224, 224)))
+        # normalize image data
+        normalized_img = (img_array.astype(np.float32) / 127.5) - 1
+        data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+        data[0] = normalized_img
         
-        # Pure AI algorithm matrix simulation based on image color pixels
-        mock_idx = int(np.sum(img_array) % 4)
-        disease_name, remedy = CLASSES[mock_idx]
+        # getting predictions from the model
+        prediction = model.predict(data)
+        index = np.argmax(prediction)
         
-        # Generate stable deep learning realistic confidence score
-        confidence = 85.4 + float((np.sum(img_array) % 13))
+        # cleaning the class name (removing the index number from teachable machine label)
+        class_name = labels[index].strip()
+        if class_name[0].isdigit():
+            class_name = " ".join(class_name.split()[1:])
+            
+        confidence_score = prediction[0][index] * 100
 
-    if "Healthy" in disease_name:
-        st.success(f"**Status:** {disease_name}")
-        st.info(f"**AI Confidence Score:** {confidence:.2f}%")
+    # displaying the final output
+    if "Healthy" in class_name:
+        st.success(f"Result: {class_name}")
+        st.info(f"Accuracy: {confidence_score:.2f}%")
         st.balloons()
     else:
-        st.error(f"**Detected Issue:** {disease_name}")
-        st.warning(f"**AI Confidence Score:** {confidence:.2f}%")
-        st.markdown(f"### 💊 Recommended Remedy:\n{remedy}")
+        st.error(f"Disease Detected: {class_name}")
+        st.warning(f"Accuracy: {confidence_score:.2f}%")
+        
+        # check and display remedy
+        remedy = remedies_dict.get(class_name, "Koi proper remedy system me add nahi hai.")
+        st.write("### Recommended Remedy:")
+        st.write(remedy)
 
 st.write("---")
 st.caption("Developed by Azad Ahmed Bhurgrri | Roll No: 2K23/CSME/9 | IMCS, University of Sindh")
